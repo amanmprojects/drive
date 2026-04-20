@@ -50,7 +50,8 @@ export default function SignInPage() {
     await authClient.signIn.social({
       provider: "github",
       callbackURL: "/drive",
-      errorCallbackURL: "/sign-in"
+      errorCallbackURL: "/sign-in",
+      newUserCallbackURL: "/onboard"
     });
   };
 

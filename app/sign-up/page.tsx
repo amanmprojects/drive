@@ -54,7 +54,7 @@ export default function SignUpPage() {
         onSuccess: (ctx) => {
             // Redirect to drive
             setIsSuccess(true);
-            router.push("/drive");
+            router.push("/onboard");
         },
         onError: (ctx) => {
             console.log(ctx);
@@ -69,6 +69,7 @@ export default function SignUpPage() {
       provider: "github",
       callbackURL: "/drive",
       errorCallbackURL: "/sign-up",
+      newUserCallbackURL: "/onboard"
     });
   };
 

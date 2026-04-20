@@ -1,17 +1,17 @@
 import { relations } from "drizzle-orm/relations";
 import {
   pgTable,
-  text,
+  text, pgEnum, uuid, uniqueIndex,
   timestamp,
   boolean,
   index,
-  serial,
   integer,
-  foreignKey,
 } from "drizzle-orm/pg-core";
 
 
-// Better Auth Tables
+/* =========================
+   Better Auth Tables
+========================= */
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -102,53 +102,168 @@ export const accountRelations = relations(account, ({ one }) => ({
     references: [user.id],
   }),
 }));
-// Better Auth Tables End
 
-// Folders(id, name, parent_id, owner_id) — defined before files so folder FKs resolve cleanly
-export const folders = pgTable(
-  "folders",
+
+/* =========================
+   ENUMS
+========================= */
+
+export const nodeTypeEnum = pgEnum("node_type", ["file", "folder"]);
+
+export const permissionRoleEnum = pgEnum("permission_role", [
+  "viewer",
+  "editor",
+]);
+
+export const shareRoleEnum = pgEnum("share_role", [
+  "viewer",
+  "editor",
+]);
+
+/* =========================
+   NODES TABLE
+========================= */
+
+export const nodes = pgTable(
+  "nodes",
   {
-    id: serial("id").primaryKey(),
-    name: text("name").notNull(),
-    parentId: integer("parentId"),
-    ownerId: text("ownerId")
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    ownerId: text("owner_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+
+    name: text("name").notNull(),
+
+    type: nodeTypeEnum("type").notNull(),
+
+    parentId: uuid("parent_id"),
+
+    // materialized path using UUIDs
+    path: text("path").notNull(),
+    depth: integer("depth").notNull().default(0),
+
+    // file-specific
+    s3Key: text("s3_key"),
+    mimeType: text("mime_type"),
+    size: integer("size"),
+
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+
+    deletedAt: timestamp("deleted_at"),
   },
   (table) => [
-    foreignKey({
-      columns: [table.parentId],
-      foreignColumns: [table.id],
-    }),
+    index("nodes_path_idx").on(table.path),
+    index("nodes_parent_idx").on(table.parentId),
+
+    uniqueIndex("nodes_parent_name_idx").on(
+      table.parentId,
+      table.name
+    ),
   ],
 );
 
-// Files(id, name, size, type, s3_url, created_at, updated_at, owner_id, folder_id)
-export const files = pgTable("files", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  path: text("path"),
-  size: integer("size"),
-  type: text("type"),
-  s3_url: text("s3_url"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt")
-    .defaultNow()
-    .$onUpdate(() => new Date())
-    .notNull(),
-  ownerId: text("ownerId")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  folderId: integer("folderId").references(() => folders.id, { onDelete: "cascade" }),
-});
+/* =========================
+   PERMISSIONS TABLE
+========================= */
 
-export const permissions = pgTable("permissions", {
-  id: serial("id").primaryKey(),
-  userId: text("userId")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  fileId: integer("fileId")
-    .notNull()
-    .references(() => files.id, { onDelete: "cascade" }),
-  permission: text("permission").notNull(),
-});
+export const permissions = pgTable(
+  "permissions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    nodeId: uuid("node_id")
+      .notNull()
+      .references(() => nodes.id, { onDelete: "cascade" }),
+
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+
+    role: permissionRoleEnum("role").notNull(),
+
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("permissions_unique_idx").on(
+      table.nodeId,
+      table.userId
+    ),
+    index("permissions_user_idx").on(table.userId),
+    index("permissions_node_idx").on(table.nodeId),
+  ],
+);
+
+/* =========================
+   SHARES TABLE
+========================= */
+
+export const shares = pgTable(
+  "shares",
+  {
+    id: text("id").primaryKey(), // nanoid / random token
+
+    nodeId: uuid("node_id")
+      .notNull()
+      .references(() => nodes.id, { onDelete: "cascade" }),
+
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+
+    role: shareRoleEnum("role").notNull(),
+
+    isPublic: boolean("is_public").default(true).notNull(),
+
+    password: text("password"), // hashed (optional)
+
+    expiresAt: timestamp("expires_at"),
+
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("shares_node_idx").on(table.nodeId),
+    index("shares_creator_idx").on(table.createdBy),
+  ],
+);
+
+/* =========================
+   RELATIONS (optional but useful)
+========================= */
+
+export const nodeRelations = relations(nodes, ({ one, many }) => ({
+  parent: one(nodes, {
+    fields: [nodes.parentId],
+    references: [nodes.id],
+  }),
+  children: many(nodes),
+
+  permissions: many(permissions),
+  shares: many(shares),
+}));
+
+export const permissionRelations = relations(permissions, ({ one }) => ({
+  node: one(nodes, {
+    fields: [permissions.nodeId],
+    references: [nodes.id],
+  }),
+  user: one(user, {
+    fields: [permissions.userId],
+    references: [user.id],
+  }),
+}));
+
+export const shareRelations = relations(shares, ({ one }) => ({
+  node: one(nodes, {
+    fields: [shares.nodeId],
+    references: [nodes.id],
+  }),
+  creator: one(user, {
+    fields: [shares.createdBy],
+    references: [user.id],
+  }),
+}));
