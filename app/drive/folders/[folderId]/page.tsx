@@ -14,7 +14,11 @@ interface DriveData {
   breadcrumbs: Breadcrumb[];
 }
 
-export default function DriveRootPage() {
+export default function DriveFolderPage({
+  params,
+}: {
+  params: Promise<{ folderId: string }>;
+}) {
   const router = useRouter();
   const { data: session, isPending: isSessionPending } = authClient.useSession();
 
@@ -29,7 +33,7 @@ export default function DriveRootPage() {
     }
   }, [session, isSessionPending, router]);
 
-  // Fetch root drive data
+  // Fetch drive data when folderId changes
   useEffect(() => {
     if (!session) return;
 
@@ -38,10 +42,17 @@ export default function DriveRootPage() {
       setError(null);
 
       try {
-        const response = await fetch("/api/drive");
+        const { folderId } = await params;
+        const apiPath = `/api/drive/folders/${folderId}`;
+
+        const response = await fetch(apiPath);
 
         if (!response.ok) {
-          setError("Failed to load drive contents");
+          if (response.status === 404) {
+            setError("Folder not found");
+          } else {
+            setError("Failed to load drive contents");
+          }
           return;
         }
 
@@ -55,7 +66,7 @@ export default function DriveRootPage() {
     };
 
     fetchDriveData();
-  }, [session]);
+  }, [params, session]);
 
   // Show loading state while checking session or loading data
   if (isSessionPending || isLoading) {
@@ -71,6 +82,12 @@ export default function DriveRootPage() {
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
         <p className="text-lg font-medium">{error}</p>
+        <button
+          onClick={() => router.push("/drive")}
+          className="mt-4 text-primary hover:underline"
+        >
+          Go to My Drive
+        </button>
       </div>
     );
   }
