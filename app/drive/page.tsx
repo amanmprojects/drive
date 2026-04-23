@@ -106,7 +106,11 @@ export default function DriveRootPage() {
             <p className="text-lg font-medium">{error}</p>
           </div>
         ) : (
-          <FileGrid key={pathname} nodes={driveData?.nodes ?? []} />
+          <FileGrid
+            key={pathname}
+            nodes={driveData?.nodes ?? []}
+            onListChanged={fetchDriveData}
+          />
         )}
       </div>
 

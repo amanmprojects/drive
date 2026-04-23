@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { nodes } from "@/db/schema";
-import { eq, and, isNull, isNotNull, sql } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, inArray, sql } from "drizzle-orm";
 
 export type NodeType = "file" | "folder";
 
@@ -38,7 +38,8 @@ export async function getFolderById(
       and(
         eq(nodes.id, folderId),
         eq(nodes.ownerId, userId),
-        eq(nodes.type, "folder")
+        eq(nodes.type, "folder"),
+        isNull(nodes.deletedAt)
       )
     )
     .limit(1);
@@ -78,8 +79,16 @@ export async function getNodesByParentId(
   userId: string
 ): Promise<DriveNode[]> {
   const query = parentId
-    ? and(eq(nodes.parentId, parentId), eq(nodes.ownerId, userId))
-    : and(isNull(nodes.parentId), eq(nodes.ownerId, userId));
+    ? and(
+        eq(nodes.parentId, parentId),
+        eq(nodes.ownerId, userId),
+        isNull(nodes.deletedAt)
+      )
+    : and(
+        isNull(nodes.parentId),
+        eq(nodes.ownerId, userId),
+        isNull(nodes.deletedAt)
+      );
 
   const results = await db
     .select()
@@ -151,13 +160,15 @@ export async function folderExists(
         eq(nodes.parentId, parentId),
         eq(nodes.ownerId, userId),
         eq(nodes.name, name),
-        eq(nodes.type, "folder")
+        eq(nodes.type, "folder"),
+        isNull(nodes.deletedAt)
       )
     : and(
         isNull(nodes.parentId),
         eq(nodes.ownerId, userId),
         eq(nodes.name, name),
-        eq(nodes.type, "folder")
+        eq(nodes.type, "folder"),
+        isNull(nodes.deletedAt)
       );
 
   const result = await db.select({ id: nodes.id }).from(nodes).where(query).limit(1);
@@ -271,9 +282,15 @@ export async function nameExistsInParent(
     ? and(
         eq(nodes.parentId, parentId),
         eq(nodes.ownerId, userId),
-        eq(nodes.name, name)
+        eq(nodes.name, name),
+        isNull(nodes.deletedAt)
       )
-    : and(isNull(nodes.parentId), eq(nodes.ownerId, userId), eq(nodes.name, name));
+    : and(
+        isNull(nodes.parentId),
+        eq(nodes.ownerId, userId),
+        eq(nodes.name, name),
+        isNull(nodes.deletedAt)
+      );
 
   const result = await db
     .select({ id: nodes.id })
@@ -407,4 +424,56 @@ export async function getTotalFileSizeBytesByOwner(
       )
     );
   return Number(row?.total ?? 0);
+}
+
+/**
+ * Soft-delete a file or folder (recursive for folders) for the owner.
+ * Returns null if the node does not exist, is not owned by the user, or is already deleted.
+ */
+export async function softDeleteNodeForOwner(
+  nodeId: string,
+  userId: string
+): Promise<{ deleted: number } | null> {
+  const [row] = await db
+    .select({ id: nodes.id })
+    .from(nodes)
+    .where(
+      and(
+        eq(nodes.id, nodeId),
+        eq(nodes.ownerId, userId),
+        isNull(nodes.deletedAt)
+      )
+    )
+    .limit(1);
+
+  if (!row) return null;
+
+  const toDelete: string[] = [row.id];
+  let frontier: string[] = [row.id];
+
+  while (frontier.length > 0) {
+    const childRows = await db
+      .select({ id: nodes.id })
+      .from(nodes)
+      .where(
+        and(
+          inArray(nodes.parentId, frontier),
+          eq(nodes.ownerId, userId),
+          isNull(nodes.deletedAt)
+        )
+      );
+    const next = childRows.map((c) => c.id);
+    toDelete.push(...next);
+    frontier = next;
+  }
+
+  const now = new Date();
+  await db
+    .update(nodes)
+    .set({ deletedAt: now, updatedAt: now })
+    .where(
+      and(inArray(nodes.id, toDelete), eq(nodes.ownerId, userId))
+    );
+
+  return { deleted: toDelete.length };
 }
