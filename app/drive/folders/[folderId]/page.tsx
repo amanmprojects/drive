@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { DriveTopBar } from "@/components/drive/top-bar";
 import { FileGrid } from "@/components/drive/file-grid";
+import { CreateItemFAB } from "@/components/drive/create-item-fab";
 import type { Node, Breadcrumb } from "@/types/drive";
 
 interface DriveData {
@@ -25,6 +26,7 @@ export default function DriveFolderPage({
   const [driveData, setDriveData] = useState<DriveData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [folderId, setFolderId] = useState<string | null>(null);
 
   // Redirect to sign-in if not authenticated
   useEffect(() => {
@@ -33,40 +35,48 @@ export default function DriveFolderPage({
     }
   }, [session, isSessionPending, router]);
 
-  // Fetch drive data when folderId changes
+  // Resolve params and store folderId
   useEffect(() => {
-    if (!session) return;
-
-    const fetchDriveData = async () => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const { folderId } = await params;
-        const apiPath = `/api/drive/folders/${folderId}`;
-
-        const response = await fetch(apiPath);
-
-        if (!response.ok) {
-          if (response.status === 404) {
-            setError("Folder not found");
-          } else {
-            setError("Failed to load drive contents");
-          }
-          return;
-        }
-
-        const data = await response.json();
-        setDriveData(data);
-      } catch (err) {
-        setError("An error occurred while loading your drive");
-      } finally {
-        setIsLoading(false);
-      }
+    const resolveParams = async () => {
+      const { folderId: resolvedFolderId } = await params;
+      setFolderId(resolvedFolderId);
     };
+    resolveParams();
+  }, [params]);
 
+  // Fetch drive data when folderId changes
+  const fetchDriveData = useCallback(async () => {
+    if (!session || !folderId) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const apiPath = `/api/drive/folders/${folderId}`;
+
+      const response = await fetch(apiPath);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          setError("Folder not found");
+        } else {
+          setError("Failed to load drive contents");
+        }
+        return;
+      }
+
+      const data = await response.json();
+      setDriveData(data);
+    } catch (err) {
+      setError("An error occurred while loading your drive");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [folderId, session]);
+
+  useEffect(() => {
     fetchDriveData();
-  }, [params, session]);
+  }, [fetchDriveData]);
 
   // Show loading state while checking session or loading data
   if (isSessionPending || isLoading) {
@@ -101,6 +111,12 @@ export default function DriveFolderPage({
       <div className="flex-1 overflow-y-auto">
         <FileGrid nodes={driveData?.nodes ?? []} />
       </div>
+
+      {/* Floating Action Button */}
+      <CreateItemFAB
+        parentId={folderId}
+        onFolderCreated={fetchDriveData}
+      />
     </div>
   );
 }

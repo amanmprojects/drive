@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { DriveTopBar } from "@/components/drive/top-bar";
 import { FileGrid } from "@/components/drive/file-grid";
+import { CreateItemFAB } from "@/components/drive/create-item-fab";
 import type { Node, Breadcrumb } from "@/types/drive";
 
 interface DriveData {
@@ -30,32 +31,32 @@ export default function DriveRootPage() {
   }, [session, isSessionPending, router]);
 
   // Fetch root drive data
-  useEffect(() => {
+  const fetchDriveData = useCallback(async () => {
     if (!session) return;
 
-    const fetchDriveData = async () => {
-      setIsLoading(true);
-      setError(null);
+    setIsLoading(true);
+    setError(null);
 
-      try {
-        const response = await fetch("/api/drive");
+    try {
+      const response = await fetch("/api/drive");
 
-        if (!response.ok) {
-          setError("Failed to load drive contents");
-          return;
-        }
-
-        const data = await response.json();
-        setDriveData(data);
-      } catch (err) {
-        setError("An error occurred while loading your drive");
-      } finally {
-        setIsLoading(false);
+      if (!response.ok) {
+        setError("Failed to load drive contents");
+        return;
       }
-    };
 
-    fetchDriveData();
+      const data = await response.json();
+      setDriveData(data);
+    } catch (err) {
+      setError("An error occurred while loading your drive");
+    } finally {
+      setIsLoading(false);
+    }
   }, [session]);
+
+  useEffect(() => {
+    fetchDriveData();
+  }, [fetchDriveData]);
 
   // Show loading state while checking session or loading data
   if (isSessionPending || isLoading) {
@@ -84,6 +85,12 @@ export default function DriveRootPage() {
       <div className="flex-1 overflow-y-auto">
         <FileGrid nodes={driveData?.nodes ?? []} />
       </div>
+
+      {/* Floating Action Button */}
+      <CreateItemFAB
+        parentId={null}
+        onFolderCreated={fetchDriveData}
+      />
     </div>
   );
 }
