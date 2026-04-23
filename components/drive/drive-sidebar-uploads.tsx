@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import {
   Loader2,
   X,
@@ -9,6 +10,72 @@ import {
 import { Button } from "@/components/ui/button";
 import { useDriveUploadContext } from "./drive-upload-context";
 import { formatFileSize, rowStatusLabel } from "@/lib/upload-ui";
+import type { UploadRow } from "@/lib/hooks/use-drive-upload";
+
+const UploadRowItem = memo(function UploadRowItem({ row }: { row: UploadRow }) {
+  return (
+    <li className="space-y-1 text-xs">
+      <div className="flex items-center justify-between gap-1 text-sidebar-foreground/80">
+        <span
+          className="flex min-w-0 flex-1 items-center gap-1.5"
+          title={row.displayName}
+        >
+          {row.status === "active" && (
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+          )}
+          {row.status === "done" && (
+            <Check
+              className="h-3.5 w-3.5 shrink-0 text-green-600"
+              aria-hidden
+            />
+          )}
+          {row.status === "error" && (
+            <CircleAlert
+              className="h-3.5 w-3.5 shrink-0 text-destructive"
+              aria-hidden
+            />
+          )}
+          {row.status === "pending" && (
+            <span
+              className="h-3.5 w-3.5 shrink-0 rounded-full border border-sidebar-foreground/30"
+              aria-hidden
+            />
+          )}
+          <span className="min-w-0 flex-1 truncate text-sidebar-foreground">
+            {row.displayName}
+          </span>
+        </span>
+        {row.status === "active" && row.stage === "uploading" && (
+          <span className="shrink-0 tabular-nums">{row.progress}%</span>
+        )}
+        {row.status === "error" && (
+          <span className="shrink-0 text-destructive" title="Failed">
+            !
+          </span>
+        )}
+      </div>
+      <p className="pl-5 text-[10px] text-sidebar-foreground/70">
+        {rowStatusLabel(row)} · {formatFileSize(row.size)}
+      </p>
+      {row.status === "active" && row.stage === "uploading" && (
+        <div className="h-1 w-full overflow-hidden rounded-full bg-sidebar-border pl-0">
+          <div
+            className="h-full bg-sidebar-primary transition-all duration-150"
+            style={{ width: `${row.progress}%` }}
+          />
+        </div>
+      )}
+      {row.status === "error" && row.errorMessage && (
+        <p
+          className="pl-5 text-[10px] text-destructive"
+          title={row.errorMessage}
+        >
+          {row.errorMessage}
+        </p>
+      )}
+    </li>
+  );
+});
 
 function hasPanelContent(
   aggregateError: string | null,
@@ -111,68 +178,7 @@ export function DriveSidebarUploads() {
             </div>
             <ul className="space-y-2 pr-0.5">
               {rows.map((row) => (
-                <li key={row.id} className="space-y-1 text-xs">
-                  <div className="flex items-center justify-between gap-1 text-sidebar-foreground/80">
-                    <span
-                      className="flex min-w-0 flex-1 items-center gap-1.5"
-                      title={row.displayName}
-                    >
-                      {row.status === "active" && (
-                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                      )}
-                      {row.status === "done" && (
-                        <Check
-                          className="h-3.5 w-3.5 shrink-0 text-green-600"
-                          aria-hidden
-                        />
-                      )}
-                      {row.status === "error" && (
-                        <CircleAlert
-                          className="h-3.5 w-3.5 shrink-0 text-destructive"
-                          aria-hidden
-                        />
-                      )}
-                      {row.status === "pending" && (
-                        <span
-                          className="h-3.5 w-3.5 shrink-0 rounded-full border border-sidebar-foreground/30"
-                          aria-hidden
-                        />
-                      )}
-                      <span className="min-w-0 flex-1 truncate text-sidebar-foreground">
-                        {row.displayName}
-                      </span>
-                    </span>
-                    {row.status === "active" && row.stage === "uploading" && (
-                      <span className="shrink-0 tabular-nums">
-                        {row.progress}%
-                      </span>
-                    )}
-                    {row.status === "error" && (
-                      <span className="shrink-0 text-destructive" title="Failed">
-                        !
-                      </span>
-                    )}
-                  </div>
-                  <p className="pl-5 text-[10px] text-sidebar-foreground/70">
-                    {rowStatusLabel(row)} · {formatFileSize(row.size)}
-                  </p>
-                  {row.status === "active" && row.stage === "uploading" && (
-                    <div className="h-1 w-full overflow-hidden rounded-full bg-sidebar-border pl-0">
-                      <div
-                        className="h-full bg-sidebar-primary transition-all duration-150"
-                        style={{ width: `${row.progress}%` }}
-                      />
-                    </div>
-                  )}
-                  {row.status === "error" && row.errorMessage && (
-                    <p
-                      className="pl-5 text-[10px] text-destructive"
-                      title={row.errorMessage}
-                    >
-                      {row.errorMessage}
-                    </p>
-                  )}
-                </li>
+                <UploadRowItem key={row.id} row={row} />
               ))}
             </ul>
             <div className="flex justify-end border-t border-sidebar-border/60 pt-1.5">

@@ -33,7 +33,17 @@ type PreparedFileItem = {
   rootParentId: string | null;
   dirSegments: string[];
   displayName: string;
+  /** Resolved after the folder pre-pass; files with an error here are skipped. */
+  fileParentId?: string | null;
+  preError?: string;
 };
+
+function chainCacheKey(
+  rootParentId: string | null,
+  dirSegments: string[]
+): string {
+  return `${rootParentId ?? "root"}\0${dirSegments.join("/")}`;
+}
 
 function isAbortError(e: unknown): boolean {
   return e instanceof DOMException && e.name === "AbortError";
@@ -87,9 +97,62 @@ export function useDriveUpload(
         setRows((r) => applyRow(r, id, patch));
       };
 
+      // Folder pre-pass: resolve every unique chain sequentially *before*
+      // starting concurrent file uploads. Eliminates folder-creation races
+      // (two workers trying to POST the same folder and racing the DB
+      // unique constraint, which surfaced as "Failed to create folder").
       try {
+        const chainResults = new Map<string, string | null>();
+        const chainErrors = new Map<string, string>();
+        for (const item of prepared) {
+          if (signal.aborted) break;
+          const key = chainCacheKey(item.rootParentId, item.dirSegments);
+          if (item.dirSegments.length === 0) {
+            item.fileParentId = item.rootParentId;
+            continue;
+          }
+          if (chainResults.has(key)) {
+            item.fileParentId = chainResults.get(key) ?? null;
+            continue;
+          }
+          if (chainErrors.has(key)) {
+            item.preError = chainErrors.get(key);
+            continue;
+          }
+          try {
+            const resolved = await ensureFolderChain(
+              item.rootParentId,
+              item.dirSegments,
+              { signal, idCache, onFolderCreated }
+            );
+            chainResults.set(key, resolved);
+            item.fileParentId = resolved;
+          } catch (err) {
+            if (isAbortError(err)) throw err;
+            const message =
+              err instanceof Error
+                ? err.message
+                : "Failed to prepare folder path";
+            chainErrors.set(key, message);
+            item.preError = message;
+          }
+        }
+
+        // Apply pre-pass errors to rows up front so users see them immediately.
+        for (const item of prepared) {
+          if (item.preError) {
+            updateRow(item.id, {
+              status: "error",
+              errorMessage: item.preError,
+              progress: 0,
+            });
+          }
+        }
+
+        const uploadable = prepared.filter((p) => !p.preError);
+
         const results = await mapWithConcurrency(
-          prepared,
+          uploadable,
           DEFAULT_UPLOAD_CONCURRENCY,
           async (item) => {
             if (signal.aborted) {
@@ -103,11 +166,7 @@ export function useDriveUpload(
               } as UploadOneResult;
             }
 
-            driveUploadDebug("worker: folder chain → presign", {
-              displayName: item.displayName,
-              dirSegments: item.dirSegments,
-              rootParentId: item.rootParentId,
-            });
+            const fileParentId = item.fileParentId ?? null;
 
             updateRow(item.id, {
               status: "active",
@@ -115,51 +174,23 @@ export function useDriveUpload(
               progress: 0,
             });
 
-            let fileParentId: string | null;
-            try {
-              fileParentId = await ensureFolderChain(
-                item.rootParentId,
-                item.dirSegments,
-                { signal, idCache, onFolderCreated }
-              );
-              driveUploadDebug("worker: ensureFolderChain ok", {
-                displayName: item.displayName,
-                fileParentId,
-              });
-            } catch (err) {
-              driveUploadDebug("worker: ensureFolderChain failed", {
-                displayName: item.displayName,
-                err,
-              });
-              const message =
-                err instanceof Error
-                  ? err.message
-                  : "Failed to prepare folder path";
-              updateRow(item.id, {
-                status: "error",
-                errorMessage: message,
-                progress: 0,
-              });
-              return {
-                ok: false,
-                name: item.displayName,
-                message,
-              } as UploadOneResult;
-            }
-
             driveUploadDebug("worker: calling uploadDriveFile", {
               displayName: item.displayName,
               fileParentId,
               fileSize: item.file.size,
             });
+            let lastPct = -1;
             const r = await uploadDriveFile(
               item.file,
               fileParentId,
               {
                 displayName: item.displayName,
                 signal,
-                onProgress: (pct) =>
-                  updateRow(item.id, { progress: pct, stage: "uploading" }),
+                onProgress: (pct) => {
+                  if (pct === lastPct) return;
+                  lastPct = pct;
+                  updateRow(item.id, { progress: pct, stage: "uploading" });
+                },
                 onStage: (stage) => updateRow(item.id, { stage }),
               }
             );
@@ -201,7 +232,19 @@ export function useDriveUpload(
         const failed = results.filter(
           (r): r is Extract<UploadOneResult, { ok: false }> => !r.ok
         );
-        const realFailures = failed.filter((r) => r.message !== "Cancelled");
+        const preFailed = prepared
+          .filter((p) => p.preError)
+          .map(
+            (p) =>
+              ({
+                ok: false as const,
+                name: p.displayName,
+                message: p.preError!,
+              })
+          );
+        const realFailures = [...preFailed, ...failed].filter(
+          (r) => r.message !== "Cancelled"
+        );
         if (realFailures.length > 0) {
           setAggregateError(formatUploadAggregateError(realFailures));
         } else {
