@@ -1,4 +1,5 @@
 import { relations } from "drizzle-orm/relations";
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   text, pgEnum, uuid, uniqueIndex,
@@ -164,6 +165,11 @@ export const nodes = pgTable(
       table.parentId,
       table.name
     ),
+    uniqueIndex("nodes_owner_s3_key_uniq")
+      .on(table.ownerId, table.s3Key)
+      .where(
+        sql`${table.s3Key} is not null and ${table.type} = 'file'`
+      ),
   ],
 );
 
