@@ -2,8 +2,10 @@ import { auth } from "@/lib/auth";
 import { isValidDriveObjectKey } from "@/lib/drive-object-key";
 import {
   createFileNode,
+  DEFAULT_DRIVE_QUOTA_BYTES,
   getFileNodeByS3Key,
   getFolderById,
+  getTotalFileSizeBytesByOwner,
   type DriveNode,
 } from "@/lib/queries";
 import { headVerifyUploadedObject } from "@/lib/s3-verify-upload";
@@ -109,6 +111,17 @@ export async function POST(
       return NextResponse.json(
         { error: "Failed to verify upload in storage" },
         { status: 500 }
+      );
+    }
+
+    const usedBytes = await getTotalFileSizeBytesByOwner(userId);
+    if (usedBytes + verified.size > DEFAULT_DRIVE_QUOTA_BYTES) {
+      return NextResponse.json(
+        {
+          error:
+            "Storage limit reached. This upload would exceed your 15 GB limit.",
+        },
+        { status: 413 }
       );
     }
 

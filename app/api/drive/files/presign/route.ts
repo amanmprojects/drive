@@ -1,7 +1,12 @@
 import { auth } from "@/lib/auth";
 import { s3 } from "@/lib/s3";
 import { newDriveObjectKey } from "@/lib/drive-object-key";
-import { getFolderById, MAX_UPLOAD_BYTES } from "@/lib/queries";
+import {
+  DEFAULT_DRIVE_QUOTA_BYTES,
+  getFolderById,
+  getTotalFileSizeBytesByOwner,
+  MAX_UPLOAD_BYTES,
+} from "@/lib/queries";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { headers } from "next/headers";
@@ -88,6 +93,17 @@ export async function POST(
       return NextResponse.json(
         { error: "File is too large" },
         { status: 400 }
+      );
+    }
+
+    const usedBytes = await getTotalFileSizeBytesByOwner(userId);
+    if (usedBytes + size > DEFAULT_DRIVE_QUOTA_BYTES) {
+      return NextResponse.json(
+        {
+          error:
+            "Storage limit reached. This upload would exceed your 15 GB limit.",
+        },
+        { status: 413 }
       );
     }
 

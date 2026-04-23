@@ -73,7 +73,7 @@ export default function Home() {
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <Cloud className="h-5 w-5 text-primary-foreground" />
+              <HardDrive className="h-5 w-5 text-primary-foreground" />
             </div>
             <span className="text-xl font-semibold">Aman Drive</span>
           </div>
@@ -189,7 +189,7 @@ export default function Home() {
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
             <div className="flex items-center gap-2">
-              <Cloud className="h-5 w-5" />
+              <HardDrive className="h-5 w-5" />
               <span className="font-semibold">Aman Drive</span>
             </div>
             <p className="text-sm text-muted-foreground">
