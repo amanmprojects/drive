@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import type { Breadcrumb } from "@/types/drive";
 import { authClient } from "@/lib/auth-client";
 import { UserProfileDialog } from "@/components/drive/user-profile-dialog";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 interface TopBarProps {
   breadcrumbs: Breadcrumb[];
@@ -78,6 +79,8 @@ export function DriveTopBar({ breadcrumbs }: TopBarProps) {
           className="pl-9 h-9"
         />
       </div>
+
+      <ThemeToggle />
 
       {/* Account */}
       <Button
