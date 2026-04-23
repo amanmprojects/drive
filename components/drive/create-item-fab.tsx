@@ -49,6 +49,37 @@ export function CreateItemFAB() {
     return () => document.removeEventListener("keydown", handleEscape);
   }, []);
 
+  useEffect(() => {
+    const isEditable = (el: EventTarget | null): boolean => {
+      if (!(el instanceof HTMLElement)) return false;
+      const tag = el.tagName;
+      return (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        el.isContentEditable
+      );
+    };
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      if (event.altKey || event.shiftKey) return;
+      const key = event.key.toLowerCase();
+      if (key !== "f" && key !== "u") return;
+      if (isEditable(event.target)) return;
+      if (isUploading) return;
+      event.preventDefault();
+      setIsExpanded(false);
+      if (key === "f") {
+        setIsDialogOpen(true);
+      } else {
+        dismissPanel();
+        fileInputRef.current?.click();
+      }
+    };
+    document.addEventListener("keydown", handleShortcut);
+    return () => document.removeEventListener("keydown", handleShortcut);
+  }, [isUploading, dismissPanel]);
+
   const handleNewFolderClick = () => {
     setIsExpanded(false);
     setIsDialogOpen(true);
@@ -151,11 +182,11 @@ export function CreateItemFAB() {
             </span>
             <Button
               size="icon"
-              className="h-12 w-12 rounded-full shadow-lg"
+              className="h-12 w-12 rounded-full bg-white text-black shadow-lg hover:bg-white/90 dark:bg-black dark:text-white dark:hover:bg-black/90"
               onClick={handleNewFolderClick}
               disabled={isUploading}
             >
-              <FolderPlus className="h-5 w-5" />
+              <FolderPlus className="h-5 w-5 " />
               <span className="sr-only">Create new folder</span>
             </Button>
           </div>
@@ -166,11 +197,11 @@ export function CreateItemFAB() {
             </span>
             <Button
               size="icon"
-              className="h-12 w-12 rounded-full shadow-lg"
+              className="h-12 w-12 rounded-full bg-white text-black shadow-lg hover:bg-white/90 dark:bg-black dark:text-white dark:hover:bg-black/90"
               onClick={handleUploadClick}
               disabled={isUploading}
             >
-              <Upload className="h-5 w-5" />
+              <Upload className="h-5 w-5 " />
               <span className="sr-only">Upload files from device</span>
             </Button>
           </div>
@@ -181,11 +212,11 @@ export function CreateItemFAB() {
             </span>
             <Button
               size="icon"
-              className="h-12 w-12 rounded-full shadow-lg"
+              className="h-12 w-12 rounded-full bg-white text-black shadow-lg hover:bg-white/90 dark:bg-black dark:text-white dark:hover:bg-black/90"
               onClick={handleUploadFolderClick}
               disabled={isUploading}
             >
-              <FolderUp className="h-5 w-5" />
+              <FolderUp className="h-5 w-5 " />
               <span className="sr-only">Upload a folder from device</span>
             </Button>
           </div>
@@ -194,13 +225,13 @@ export function CreateItemFAB() {
         <Button
           size="icon"
           className={cn(
-            "h-14 w-14 rounded-full shadow-xl transition-transform duration-200",
+            "h-14 w-14 rounded-full bg-white text-black shadow-xl transition-transform duration-200 hover:bg-white/90 dark:bg-black dark:text-white dark:hover:bg-black/90",
             isExpanded && "rotate-45"
           )}
           onClick={() => setIsExpanded(!isExpanded)}
           disabled={isUploading}
         >
-          <Plus className="h-6 w-6" />
+          <Plus className="h-6 w-6 " />
           <span className="sr-only">Create new item</span>
         </Button>
       </div>
