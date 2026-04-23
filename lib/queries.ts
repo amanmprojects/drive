@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { nodes } from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 
 export type NodeType = "file" | "folder";
 
@@ -115,4 +115,104 @@ export async function buildBreadcrumbs(
   }
 
   return breadcrumbs;
+}
+
+/**
+ * Check if a folder with the given name already exists in the parent folder
+ */
+export async function folderExists(
+  name: string,
+  parentId: string | null,
+  userId: string
+): Promise<boolean> {
+  const query = parentId
+    ? and(
+        eq(nodes.parentId, parentId),
+        eq(nodes.ownerId, userId),
+        eq(nodes.name, name),
+        eq(nodes.type, "folder")
+      )
+    : and(
+        isNull(nodes.parentId),
+        eq(nodes.ownerId, userId),
+        eq(nodes.name, name),
+        eq(nodes.type, "folder")
+      );
+
+  const result = await db.select({ id: nodes.id }).from(nodes).where(query).limit(1);
+
+  return result.length > 0;
+}
+
+/**
+ * Create a new folder
+ * Calculates path and depth based on parent folder
+ * Throws error if folder with same name already exists in parent
+ */
+export async function createFolder(
+  name: string,
+  parentId: string | null,
+  userId: string
+): Promise<DriveNode> {
+  // Validate folder name
+  if (!name || name.trim().length === 0) {
+    throw new Error("Folder name is required");
+  }
+
+  if (name.length > 255) {
+    throw new Error("Folder name must be less than 255 characters");
+  }
+
+  const trimmedName = name.trim();
+
+  // Check for duplicate name in parent folder
+  const exists = await folderExists(trimmedName, parentId, userId);
+  if (exists) {
+    throw new Error(`A folder named "${trimmedName}" already exists in this location`);
+  }
+
+  // Calculate path and depth based on parent
+  let path: string;
+  let depth: number;
+
+  if (parentId) {
+    // Get parent folder to determine path and depth
+    const parent = await getFolderById(parentId, userId);
+    if (!parent) {
+      throw new Error("Parent folder not found");
+    }
+    path = `${parent.path}/${parentId}`;
+    depth = parent.depth + 1;
+  } else {
+    // Root-level folder
+    path = "/";
+    depth = 0;
+  }
+
+  try {
+    // Insert the new folder
+    const result = await db
+      .insert(nodes)
+      .values({
+        ownerId: userId,
+        name: trimmedName,
+        type: "folder",
+        parentId,
+        path,
+        depth,
+      })
+      .returning();
+
+    if (!result[0]) {
+      throw new Error("Failed to create folder");
+    }
+
+    return result[0];
+  } catch (error) {
+    // Handle unique constraint violation (parent_id, name)
+    if (error instanceof Error && error.message.includes("unique constraint")) {
+      throw new Error(`A folder named "${trimmedName}" already exists in this location`);
+    }
+    throw error;
+  }
 }
