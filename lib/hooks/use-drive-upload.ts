@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   uploadDriveFile,
   formatUploadAggregateError,
@@ -70,6 +70,16 @@ export function useDriveUpload(
   const parentIdRef = useRef(parentId);
   parentIdRef.current = parentId;
   const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!isUploading) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isUploading]);
 
   const runBatch = useCallback(
     async (prepared: PreparedFileItem[], initialRows: UploadRow[]) => {
