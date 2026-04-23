@@ -25,19 +25,6 @@ export interface BreadcrumbItem {
 }
 
 /**
- * Get the root "My Drive" folder for a user
- */
-export async function getRootFolder(userId: string): Promise<DriveNode | null> {
-  const result = await db
-    .select()
-    .from(nodes)
-    .where(and(eq(nodes.ownerId, userId), isNull(nodes.parentId)))
-    .limit(1);
-
-  return result[0] ?? null;
-}
-
-/**
  * Get a folder by its ID
  */
 export async function getFolderById(
@@ -57,49 +44,6 @@ export async function getFolderById(
     .limit(1);
 
   return result[0] ?? null;
-}
-
-/**
- * Resolve a path (array of folder names) to a specific folder
- * Walks from root through each path segment
- */
-export async function getFolderByPath(
-  userId: string,
-  pathSegments: string[]
-): Promise<DriveNode | null> {
-  // Start with root folder
-  let currentFolder = await getRootFolder(userId);
-
-  if (!currentFolder) {
-    return null;
-  }
-
-  // Walk through each path segment
-  for (const segment of pathSegments) {
-    if (!segment) continue;
-
-    // Find child folder with matching name
-    const childFolder = await db
-      .select()
-      .from(nodes)
-      .where(
-        and(
-          eq(nodes.ownerId, userId),
-          eq(nodes.parentId, currentFolder.id),
-          eq(nodes.name, segment),
-          eq(nodes.type, "folder")
-        )
-      )
-      .limit(1);
-
-    if (!childFolder[0]) {
-      return null; // Path segment not found
-    }
-
-    currentFolder = childFolder[0];
-  }
-
-  return currentFolder;
 }
 
 /**

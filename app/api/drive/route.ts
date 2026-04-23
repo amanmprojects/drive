@@ -1,8 +1,6 @@
 import { auth } from "@/lib/auth";
 import {
-  getRootFolder,
   getNodesByParentId,
-  buildBreadcrumbs,
   type DriveNode,
   type BreadcrumbItem,
 } from "@/lib/queries";
@@ -11,7 +9,14 @@ import { NextResponse } from "next/server";
 
 export interface DriveApiResponse {
   nodes: DriveNode[];
-  currentFolder: DriveNode;
+  currentFolder: {
+    id: string;
+    name: string;
+    type: "folder";
+    parentId: null;
+    path: string;
+    depth: number;
+  };
   breadcrumbs: BreadcrumbItem[];
 }
 
@@ -28,21 +33,27 @@ export async function GET(request: Request) {
   const userId = session.user.id;
 
   try {
-    // Root drive - get "My Drive" folder
-    const currentFolder = await getRootFolder(userId);
+    // Get all nodes in root (parentId = null)
+    const folderNodes = await getNodesByParentId(null, userId);
 
-    if (!currentFolder) {
-      return NextResponse.json(
-        { error: "Root folder not found." },
-        { status: 404 }
-      );
-    }
+    // Virtual root folder - not stored in DB, just a UI concept
+    const currentFolder = {
+      id: "root",
+      name: "My Drive",
+      type: "folder" as const,
+      parentId: null,
+      path: "/",
+      depth: 0,
+    };
 
-    // Get all nodes in root folder
-    const folderNodes = await getNodesByParentId(currentFolder.id, userId);
-
-    // Build breadcrumbs
-    const breadcrumbs = await buildBreadcrumbs(currentFolder, userId);
+    // Single breadcrumb for root
+    const breadcrumbs: BreadcrumbItem[] = [
+      {
+        id: "root",
+        name: "My Drive",
+        path: "/drive",
+      },
+    ];
 
     const response: DriveApiResponse = {
       nodes: folderNodes,
