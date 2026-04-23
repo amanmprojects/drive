@@ -13,19 +13,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
+import type { DriveListUpdate } from "@/lib/drive-list-merge";
+import type { Node } from "@/types/drive";
 
 interface CreateFolderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   parentId: string | null;
-  onSuccess?: () => void;
+  onDriveListUpdate?: (u: DriveListUpdate) => void;
 }
 
 export function CreateFolderDialog({
   open,
   onOpenChange,
   parentId,
-  onSuccess,
+  onDriveListUpdate,
 }: CreateFolderDialogProps) {
   const [name, setName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -66,10 +68,12 @@ export function CreateFolderDialog({
         throw new Error(data.error || "Failed to create folder");
       }
 
+      const data = (await response.json()) as { folder: Node };
+      onDriveListUpdate?.({ kind: "add", node: data.folder });
+
       // Success - close dialog and reset state
       setName("");
       onOpenChange(false);
-      onSuccess?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {

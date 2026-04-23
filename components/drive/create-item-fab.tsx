@@ -1,22 +1,29 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Plus, FolderPlus, Upload } from "lucide-react";
+import { Plus, FolderPlus, Upload, FolderUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CreateFolderDialog } from "./create-folder-dialog";
 import { cn } from "@/lib/utils";
+import { driveUploadDebug } from "@/lib/drive-upload-debug";
+import { useDriveUploadContext } from "./drive-upload-context";
 
-interface CreateItemFABProps {
-  parentId: string | null;
-  onFolderCreated?: () => void;
-}
-
-export function CreateItemFAB({ parentId, onFolderCreated }: CreateItemFABProps) {
+export function CreateItemFAB() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
-  // Close menu when clicking outside
+  const {
+    parentId,
+    isUploading,
+    startFileBatch,
+    startFolderBatch,
+    notifyDriveList,
+    dismissPanel,
+  } = useDriveUploadContext();
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -31,7 +38,6 @@ export function CreateItemFAB({ parentId, onFolderCreated }: CreateItemFABProps)
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Close menu on escape key
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -50,57 +56,141 @@ export function CreateItemFAB({ parentId, onFolderCreated }: CreateItemFABProps)
 
   const handleUploadClick = () => {
     setIsExpanded(false);
-    // Placeholder for upload functionality
-    alert("Upload functionality coming soon!");
+    dismissPanel();
+    fileInputRef.current?.click();
+  };
+
+  const handleUploadFolderClick = () => {
+    setIsExpanded(false);
+    dismissPanel();
+    folderInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files?.length
+      ? Array.from(e.target.files)
+      : [];
+    e.target.value = "";
+    if (files.length === 0) {
+      driveUploadDebug("file input: empty selection (cleared or cancelled)");
+      return;
+    }
+    driveUploadDebug("file input: selected", {
+      count: files.length,
+      first: { name: files[0]?.name, size: files[0]?.size, type: files[0]?.type },
+    });
+    dismissPanel();
+    startFileBatch(files);
+  };
+
+  const handleFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const entries = e.target.files?.length
+      ? Array.from(e.target.files, (file) => ({
+          file,
+          webkitRelativePath: file.webkitRelativePath,
+        }))
+      : [];
+    e.target.value = "";
+    if (entries.length === 0) {
+      driveUploadDebug("folder input: empty selection (cleared or cancelled)");
+      return;
+    }
+    driveUploadDebug("folder input: selected", {
+      count: entries.length,
+      first: {
+        name: entries[0]?.file.name,
+        webkitRelativePath: entries[0]?.file.webkitRelativePath,
+        size: entries[0]?.file.size,
+      },
+    });
+    dismissPanel();
+    startFolderBatch(entries);
   };
 
   return (
     <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="sr-only"
+        accept="*/*"
+        aria-hidden
+        tabIndex={-1}
+        onChange={handleFileChange}
+        disabled={isUploading}
+      />
+      <input
+        ref={folderInputRef}
+        type="file"
+        className="sr-only"
+        accept="*/*"
+        aria-hidden
+        tabIndex={-1}
+        onChange={handleFolderChange}
+        disabled={isUploading}
+        // @ts-expect-error — webkitdirectory is not in all React HTML input typings
+        webkitdirectory=""
+        directory="true"
+      />
       <div
         ref={containerRef}
-        className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3"
+        className="fixed bottom-6 right-6 z-50 flex max-w-sm flex-col items-end gap-3"
       >
-        {/* Expanded menu items */}
         <div
           className={cn(
             "flex flex-col items-end gap-3 transition-all duration-200",
             isExpanded
-              ? "opacity-100 translate-y-0 pointer-events-auto"
-              : "opacity-0 translate-y-4 pointer-events-none"
+              ? "pointer-events-auto translate-y-0 opacity-100"
+              : "pointer-events-none translate-y-4 opacity-0"
           )}
         >
-          {/* New Folder option */}
           <div className="flex items-center gap-3">
-            <span className="text-sm font-medium text-foreground bg-background/80 px-2 py-1 rounded shadow-sm">
+            <span className="rounded bg-background/80 px-2 py-1 text-sm font-medium text-foreground shadow-sm">
               New folder
             </span>
             <Button
               size="icon"
               className="h-12 w-12 rounded-full shadow-lg"
               onClick={handleNewFolderClick}
+              disabled={isUploading}
             >
               <FolderPlus className="h-5 w-5" />
               <span className="sr-only">Create new folder</span>
             </Button>
           </div>
 
-          {/* Upload option */}
           <div className="flex items-center gap-3">
-            <span className="text-sm font-medium text-foreground bg-background/80 px-2 py-1 rounded shadow-sm">
-              Upload
+            <span className="rounded bg-background/80 px-2 py-1 text-sm font-medium text-foreground shadow-sm">
+              Upload files
             </span>
             <Button
               size="icon"
               className="h-12 w-12 rounded-full shadow-lg"
               onClick={handleUploadClick}
+              disabled={isUploading}
             >
               <Upload className="h-5 w-5" />
-              <span className="sr-only">Upload file</span>
+              <span className="sr-only">Upload files from device</span>
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="rounded bg-background/80 px-2 py-1 text-sm font-medium text-foreground shadow-sm">
+              Upload folder
+            </span>
+            <Button
+              size="icon"
+              className="h-12 w-12 rounded-full shadow-lg"
+              onClick={handleUploadFolderClick}
+              disabled={isUploading}
+            >
+              <FolderUp className="h-5 w-5" />
+              <span className="sr-only">Upload a folder from device</span>
             </Button>
           </div>
         </div>
 
-        {/* Main FAB button */}
         <Button
           size="icon"
           className={cn(
@@ -108,18 +198,18 @@ export function CreateItemFAB({ parentId, onFolderCreated }: CreateItemFABProps)
             isExpanded && "rotate-45"
           )}
           onClick={() => setIsExpanded(!isExpanded)}
+          disabled={isUploading}
         >
           <Plus className="h-6 w-6" />
           <span className="sr-only">Create new item</span>
         </Button>
       </div>
 
-      {/* Create Folder Dialog */}
       <CreateFolderDialog
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         parentId={parentId}
-        onSuccess={onFolderCreated}
+        onDriveListUpdate={notifyDriveList}
       />
     </>
   );
